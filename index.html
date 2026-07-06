@@ -471,16 +471,26 @@
 
 </div>
 
-<script>
-  // URL do Web App do Apps Script (Implantar > Gerenciar implantações).
-  // Precisa terminar em /exec e o script precisa ter uma função doPost(e).
-  var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyO-zhPUkpQLs2JQH5olD54z1vFf6oAC8VRApFs8p0d-bCXgxoeqrVot8RxN-6n0QQ/exec';
+<!-- Envio via formulário real para um iframe oculto: evita por completo o
+     bloqueio de CORS que o fetch() sofre com o Apps Script. -->
+<iframe name="ben-pensado-target" id="benPensadoTarget" style="display:none"></iframe>
+<form id="hiddenPostForm"
+      action="https://script.google.com/macros/s/AKfycbyO-zhPUkpQLs2JQH5olD54z1vFf6oAC8VRApFs8p0d-bCXgxoeqrVot8RxN-6n0QQ/exec"
+      method="POST" target="ben-pensado-target" style="display:none">
+  <input type="hidden" name="nome" id="hiddenNome">
+  <input type="hidden" name="email" id="hiddenEmail">
+  <input type="hidden" name="opcao" id="hiddenOpcao">
+</form>
 
+<script>
   var form = document.getElementById('voteForm');
   var voteView = document.getElementById('voteView');
   var thanksView = document.getElementById('thanksView');
   var errorMsg = document.getElementById('errorMsg');
   var submitBtn = document.getElementById('submitBtn');
+  var hiddenForm = document.getElementById('hiddenPostForm');
+  var hiddenIframe = document.getElementById('benPensadoTarget');
+  var enviado = false;
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
@@ -498,42 +508,35 @@
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Enviando...';
+    enviado = false;
 
-    // Importante: body como string simples (sem header Content-Type customizado)
-    // para o navegador tratar como "simple request" e não disparar preflight,
-    // que o Apps Script não responde.
-    fetch(SCRIPT_URL, {
-      method: 'POST',
-      body: JSON.stringify({ nome: nome, email: email, opcao: opcaoEl.value })
-    })
-      .then(function(res){
-        return res.text().then(function(text){
-          var json;
-          try {
-            json = JSON.parse(text);
-          } catch (parseErr) {
-            console.error('Resposta bruta do Apps Script (não era JSON):', text);
-            throw new Error('O servidor não respondeu em JSON. Confira se a implantação está com acesso "Qualquer pessoa" e se a URL do script está correta.');
-          }
-          return json;
-        });
-      })
-      .then(function(json){
-        if (json && json.result === 'ok') {
-          voteView.hidden = true;
-          thanksView.hidden = false;
-          window.scrollTo(0,0);
-        } else {
-          throw new Error((json && json.message) || 'Resposta inesperada do servidor.');
-        }
-      })
-      .catch(function(err){
+    document.getElementById('hiddenNome').value = nome;
+    document.getElementById('hiddenEmail').value = email;
+    document.getElementById('hiddenOpcao').value = opcaoEl.value;
+
+    // Quando o iframe terminar de carregar a resposta do Apps Script,
+    // consideramos o voto enviado (não dá pra ler o conteúdo por ser
+    // cross-origin, mas o load só dispara depois que o servidor responde).
+    hiddenIframe.addEventListener('load', function onLoad(){
+      hiddenIframe.removeEventListener('load', onLoad);
+      enviado = true;
+      voteView.hidden = true;
+      thanksView.hidden = false;
+      window.scrollTo(0,0);
+    });
+
+    hiddenForm.submit();
+
+    // Rede de segurança: se por algum motivo o iframe nunca disparar "load"
+    // (ex.: bloqueio de rede), avisa em vez de travar em "Enviando..." para sempre.
+    setTimeout(function(){
+      if(!enviado){
         submitBtn.disabled = false;
         submitBtn.textContent = 'Enviar meu voto';
-        errorMsg.textContent = 'Não foi possível registrar seu voto agora. Detalhe técnico: ' + err.message;
+        errorMsg.textContent = 'Não foi possível confirmar o envio. Verifique sua conexão e tente novamente.';
         errorMsg.hidden = false;
-        console.error(err);
-      });
+      }
+    }, 8000);
   });
 </script>
 
