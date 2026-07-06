@@ -506,7 +506,18 @@
       method: 'POST',
       body: JSON.stringify({ nome: nome, email: email, opcao: opcaoEl.value })
     })
-      .then(function(res){ return res.json(); })
+      .then(function(res){
+        return res.text().then(function(text){
+          var json;
+          try {
+            json = JSON.parse(text);
+          } catch (parseErr) {
+            console.error('Resposta bruta do Apps Script (não era JSON):', text);
+            throw new Error('O servidor não respondeu em JSON. Confira se a implantação está com acesso "Qualquer pessoa" e se a URL do script está correta.');
+          }
+          return json;
+        });
+      })
       .then(function(json){
         if (json && json.result === 'ok') {
           voteView.hidden = true;
@@ -519,7 +530,7 @@
       .catch(function(err){
         submitBtn.disabled = false;
         submitBtn.textContent = 'Enviar meu voto';
-        errorMsg.textContent = 'Não foi possível registrar seu voto agora. Tente novamente em instantes.';
+        errorMsg.textContent = 'Não foi possível registrar seu voto agora. Detalhe técnico: ' + err.message;
         errorMsg.hidden = false;
         console.error(err);
       });
